@@ -1,0 +1,47 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "4862b3ea-16dc-4eb7-a2e8-25f838f0ea5e",
+  "prevId": "d9ad194f-2118-4e92-bf2c-811d86a34511",
+  "tables": {
+    "event_spaces": {
+      "name": "event_spaces",
+      "columns": {
+        "space_id": { "name": "space_id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "area": { "name": "area", "type": "real", "primaryKey": false, "notNull": false, "autoincrement": false },
+        "shop_name": { "name": "shop_name", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" },
+        "category": { "name": "category", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "'available'" },
+        "start_date": { "name": "start_date", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" },
+        "end_date": { "name": "end_date", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" },
+        "contact": { "name": "contact", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" },
+        "notes": { "name": "notes", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" },
+        "updated_at": { "name": "updated_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    },
+    "planner_states": {
+      "name": "planner_states",
+      "columns": {
+        "id": { "name": "id", "type": "integer", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "state_json": { "name": "state_json", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "revision": { "name": "revision", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false, "default": 1 },
+        "updated_at": { "name": "updated_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "updated_by": { "name": "updated_by", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    },
+    "user_planner_states": {
+      "name": "user_planner_states",
+      "columns": {
+        "user_id": { "name": "user_id", "type": "text", "primaryKey": true, "notNull": true, "autoincrement": false },
+        "state_json": { "name": "state_json", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "revision": { "name": "revision", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false, "default": 1 },
+        "updated_at": { "name": "updated_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false },
+        "updated_by": { "name": "updated_by", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "''" }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+    }
+  },
+  "enums": {}, "views": {}, "_meta": { "schemas": {}, "tables": {}, "columns": {} }, "internal": { "indexes": {} }
+}

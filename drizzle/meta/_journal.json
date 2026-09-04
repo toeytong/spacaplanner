@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788427200000,
+      "tag": "0000_event_space_planner",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788498000000,
+      "tag": "0001_planner_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788505200000,
+      "tag": "0002_user_planner_states",
+      "breakpoints": true
+    }
+  ]
+}
