@@ -1,5 +1,7 @@
 const SPACE_IDS = [...Array.from({ length: 24 }, (_, index) => String(index + 1)), "EVENT"];
 const VALID_STATUSES = new Set(["available", "hold", "confirmed", "setup"]);
+const VALID_MEMBER_ROLES = new Set(["editor", "viewer"]);
+const ADMIN_EMAIL = "npodech@gmail.com";
 
 const headers = {
   "content-type": "application/json; charset=utf-8",
@@ -8,6 +10,31 @@ const headers = {
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers });
+}
+
+function requestIdentity(request) {
+  const id = request.headers.get("oai-authenticated-user-id") || "";
+  const email = (request.headers.get("oai-authenticated-user-email") || "").trim().toLowerCase();
+  const encodedName = request.headers.get("oai-authenticated-user-full-name") || "";
+  const encoding = request.headers.get("oai-authenticated-user-full-name-encoding");
+  let name = "";
+  if (encodedName && encoding === "percent-encoded-utf-8") {
+    try { name = decodeURIComponent(encodedName); } catch (_) {}
+  }
+  return { id, email, name };
+}
+
+async function memberAccess(db, identity) {
+  if (!identity.id) return { authenticated:false, access:false, role:"visitor", status:"anonymous" };
+  if (identity.email === ADMIN_EMAIL) return { authenticated:true, access:true, role:"admin", status:"active" };
+  const { results = [] } = await db.prepare(`SELECT email, name, role, status FROM planner_members WHERE email = ?`).bind(identity.email).all();
+  const member = results[0];
+  return { authenticated:true, access:member?.status === "active", role:VALID_MEMBER_ROLES.has(member?.role) ? member.role : "editor", status:member?.status || "not_invited" };
+}
+
+async function listMembers(db, identity) {
+  const { results = [] } = await db.prepare(`SELECT email, name, role, status, created_at, updated_at FROM planner_members ORDER BY created_at DESC`).all();
+  return [{ email:ADMIN_EMAIL, name:identity.name || "Nattawut Podech", role:"admin", status:"active", protected:true }, ...results];
 }
 
 function normalizeSpace(id, value) {
@@ -130,18 +157,23 @@ async function writePlanner(request, db, body, userId, email = "") {
   const updatedAt = Date.now();
   const updatedBy = email || userId;
   if (!results[0]) {
-    await db.prepare(`
-      INSERT INTO user_planner_states (user_id, state_json, revision, updated_at, updated_by)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(userId, stateJson, current.revision + 1, updatedAt, updatedBy).run();
-    return json({ ok: true, revision: current.revision + 1, updatedAt, updatedBy });
+    try {
+      await db.prepare(`
+        INSERT INTO user_planner_states (user_id, state_json, revision, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(userId, stateJson, current.revision + 1, updatedAt, updatedBy).run();
+      return json({ ok: true, revision: current.revision + 1, updatedAt, updatedBy });
+    } catch (_) {
+      return json(await readPlanner(db,userId,email),409);
+    }
   }
   const nextRevision = current.revision + 1;
-  await db.prepare(`
+  const result=await db.prepare(`
     UPDATE user_planner_states
     SET state_json = ?, revision = ?, updated_at = ?, updated_by = ?
     WHERE user_id = ? AND revision = ?
   `).bind(stateJson, nextRevision, updatedAt, updatedBy, userId, current.revision).run();
+  if (!result?.meta?.changes) return json(await readPlanner(db,userId,email),409);
   return json({ ok: true, revision: nextRevision, updatedAt, updatedBy });
 }
 
@@ -149,22 +181,51 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/api/me" && request.method === "GET") {
-      const id = request.headers.get("oai-authenticated-user-id") || "";
-      const email = request.headers.get("oai-authenticated-user-email") || "";
-      const encodedName = request.headers.get("oai-authenticated-user-full-name") || "";
-      const encoding = request.headers.get("oai-authenticated-user-full-name-encoding");
-      let name = "";
-      if (encodedName && encoding === "percent-encoded-utf-8") {
-        try { name = decodeURIComponent(encodedName); } catch (_) {}
+      const identity = requestIdentity(request);
+      const access = env.DB ? await memberAccess(env.DB, identity) : { authenticated:Boolean(identity.id), access:false, role:"visitor", status:"unavailable" };
+      return json({ ...identity, ...access });
+    }
+    if (url.pathname === "/api/members") {
+      if (!env.DB) return json({ error:"Database binding unavailable" }, 503);
+      const identity=requestIdentity(request),access=await memberAccess(env.DB,identity);
+      if (!access.authenticated) return json({ error:"Sign in required" }, 401);
+      if (access.role !== "admin") return json({ error:"Admin only" }, 403);
+      if (request.method === "GET") return json({ members:await listMembers(env.DB,identity) });
+      if (request.method === "POST") {
+        const body=await request.json(),email=String(body?.email||"").trim().toLowerCase(),name=String(body?.name||"").trim().slice(0,120),role=VALID_MEMBER_ROLES.has(body?.role)?body.role:"editor";
+        if (!/^\S+@\S+\.\S+$/.test(email)) return json({ error:"Invalid email" },400);
+        if (email===ADMIN_EMAIL) return json({ error:"Admin account is protected" },400);
+        const now=Date.now();
+        await env.DB.prepare(`INSERT INTO planner_members (email, name, role, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?) ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = excluded.role, status = 'active', updated_at = excluded.updated_at`).bind(email,name,role,now,now).run();
+        return json({ ok:true, members:await listMembers(env.DB,identity) });
       }
-      return json({ authenticated: Boolean(id), id, name, email });
+      if (request.method === "PATCH") {
+        const body=await request.json(),email=String(body?.email||"").trim().toLowerCase(),role=String(body?.role||"");
+        if (!email || email===ADMIN_EMAIL || !VALID_MEMBER_ROLES.has(role)) return json({ error:"Invalid member update" },400);
+        const result=await env.DB.prepare(`UPDATE planner_members SET role = ?, updated_at = ? WHERE email = ?`).bind(role,Date.now(),email).run();
+        if (!result?.meta?.changes) return json({ error:"Member not found" },404);
+        return json({ ok:true, members:await listMembers(env.DB,identity) });
+      }
+      if (request.method === "DELETE") {
+        const email=String(url.searchParams.get("email")||"").trim().toLowerCase();
+        if (!email || email===ADMIN_EMAIL) return json({ error:"Protected account" },400);
+        await env.DB.prepare(`DELETE FROM planner_members WHERE email = ?`).bind(email).run();
+        return json({ ok:true, members:await listMembers(env.DB,identity) });
+      }
+      return json({ error:"Method not allowed" },405);
     }
     if (url.pathname === "/api/planner") {
       if (!env.DB) return json({ error: "Database binding unavailable" }, 503);
-      const userId=request.headers.get("oai-authenticated-user-id")||"";const email=request.headers.get("oai-authenticated-user-email")||"";
-      if (request.method === "GET") return userId?json({...(await readPlanner(env.DB,userId,email)),authenticated:true}):json({data:null,revision:0,updatedAt:null,updatedBy:"",authenticated:false});
+      const identity=requestIdentity(request),userId=identity.id,email=identity.email,access=await memberAccess(env.DB,identity);
+      if (request.method === "GET") {
+        if (!access.authenticated) return json({data:null,revision:0,updatedAt:null,updatedBy:"",authenticated:false,access:false});
+        if (!access.access) return json({ error:"Account is not authorized",authenticated:true,access:false },403);
+        return json({...(await readPlanner(env.DB,userId,email)),authenticated:true,access:true,role:access.role});
+      }
       if (request.method === "PUT") {
         if (!userId) return json({ error: "Sign in required" }, 401);
+        if (!access.access) return json({ error:"Account is not authorized" },403);
+        if (access.role === "viewer") return json({ error:"Read only account" },403);
         try { return await writePlanner(request, env.DB, await request.json(),userId,email); }
         catch (error) { return json({ error: error instanceof Error ? error.message : "Invalid request" }, 400); }
       }
