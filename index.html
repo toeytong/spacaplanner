@@ -20,7 +20,7 @@
         <div class="brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><p class="eyebrow">ACTIVITY AREA MANAGEMENT</p><h1>Space Planner</h1></div></div>
         <div class="event-picker"><label for="eventSelect">งานที่กำลังเปิด</label><select id="eventSelect" aria-label="เลือกงานกิจกรรม"></select><button class="button ghost compact" id="libraryButton" type="button">คลังงาน</button></div>
         <div class="top-actions">
-          <span class="member-badge" title="บัญชีที่กำลังใช้งาน"><span class="member-avatar">S</span><span id="memberName">สมาชิกทีม</span></span>
+          <span class="member-badge" title="บัญชีที่กำลังใช้งาน" hidden><span class="member-avatar">S</span><span id="memberName">ผู้เยี่ยมชม</span></span>
           <button class="button ghost compact" id="membersButton" type="button" hidden>จัดการสมาชิก</button>
           <a class="button ghost compact auth-button" id="signInButton" href="/signin-with-chatgpt?return_to=%2F" target="_top" hidden>เข้าสู่ระบบ</a>
           <a class="button ghost compact auth-button" id="signOutButton" href="/signout-with-chatgpt?return_to=%2F" target="_top" hidden>ออกจากระบบ</a>
@@ -105,8 +105,8 @@
       </dialog>
       <dialog class="library-dialog members-dialog" id="membersDialog">
         <form method="dialog" class="dialog-head"><div><p class="eyebrow">ADMIN CONTROL</p><h2>จัดการสมาชิก</h2></div><button class="close-editor" value="close" aria-label="ปิด">×</button></form>
-        <form class="member-add-form" id="memberAddForm"><label>ชื่อผู้ใช้<input name="name" type="text" placeholder="ชื่อสมาชิก" autocomplete="off" /></label><label>อีเมลที่ใช้เข้าสู่ระบบ<input name="email" type="email" placeholder="name@example.com" required autocomplete="off" /></label><button class="button primary" type="submit">＋ เพิ่มสมาชิก</button></form>
-        <div class="member-note">สมาชิกแต่ละคนมีข้อมูลและแปลน Cloud แยกจากกัน ผู้ดูแลระบบสามารถเพิ่มหรือลดสิทธิ์ได้จากหน้านี้</div>
+        <form class="member-add-form" id="memberAddForm"><label>ชื่อผู้ใช้<input name="name" type="text" placeholder="ชื่อสมาชิก" autocomplete="off" /></label><label>อีเมลที่ใช้เข้าสู่ระบบ<input name="email" type="email" placeholder="name@example.com" required autocomplete="off" /></label><label>สิทธิ์ใช้งาน<select name="role"><option value="editor">แก้ไขแปลน</option><option value="viewer">ดูอย่างเดียว</option></select></label><button class="button primary" type="submit">＋ เพิ่มสมาชิก</button></form>
+        <div class="member-note">สมาชิกแต่ละคนมีข้อมูลและแปลน Cloud แยกจากกัน ผู้ดูแลระบบเพิ่ม ลบ หรือเปลี่ยนสิทธิ์ได้จากหน้านี้</div>
         <div class="member-list" id="memberList"><div class="muted">กำลังโหลดสมาชิก…</div></div>
       </dialog>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>

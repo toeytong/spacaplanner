@@ -1,4 +1,5 @@
 const STORAGE_KEY = "space-planner-cloud-fallback-v2";
+const ACTIVE_VIEW_KEY = "space-planner-active-view-v1";
 let storageScope = "anonymous";
 const scopedStorageKey = () => `${STORAGE_KEY}-${storageScope}`;
 const STATUS = { available:"ว่าง", hold:"จองชั่วคราว", confirmed:"ยืนยันแล้ว", setup:"กำลังติดตั้ง" };
@@ -114,10 +115,13 @@ let cloudRevision = 0;
 let selectedId = null;
 let swapSource = null;
 let draggedId = null;
-let activeView = "interactive";
+const storedActiveView = localStorage.getItem(ACTIVE_VIEW_KEY);
+let activeView = ["interactive","reference","layout"].includes(storedActiveView) ? storedActiveView : "interactive";
 let viewZoom = clamp(Number(localStorage.getItem("space-planner-view-zoom")) || 100,75,180);
 let history = [];
 let isSaving = false;
+let queuedSaves = 0;
+let saveTail = Promise.resolve(true);
 let toastTimer;
 let memberProfile = { authenticated:false, access:false, role:"visitor" };
 
@@ -145,6 +149,7 @@ function activeObjectScale() { const event=currentEvent(); return activeView ===
 function activeBackgroundOpacity() { const event=currentEvent(); return activeView === "layout" ? event.draftBackgroundOpacity : event.publishedBackgroundOpacity; }
 function isColumnId(id) { return Boolean(id && id.startsWith("COLUMN-")); }
 function isGuideId(id) { return Boolean(id && id.startsWith("GUIDE-")); }
+function isReadOnlyUser() { return memberProfile.authenticated && memberProfile.role === "viewer"; }
 function spaceIds(layout=activeLayout()) {
   return Object.keys(layout).sort((a,b) => {
     const aNumber=Number(a),bNumber=Number(b),aNumeric=Number.isFinite(aNumber),bNumeric=Number.isFinite(bNumber);
@@ -156,35 +161,53 @@ function dimensionText(geometry) { return `${round(geometry.widthM)} × ${round(
 function showToast(message) { toast.textContent = message; toast.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("show"), 2600); }
 function snapshot() { history.push(JSON.stringify(state)); if (history.length > 40) history.shift(); }
 
-async function persist(message="บันทึกบน Cloud แล้ว") {
+function standaloneStatus() {
+  const localPreview = ["localhost","127.0.0.1"].includes(location.hostname);
+  return localPreview ? "พรีวิวบนเครื่อง · เก็บข้อมูลในอุปกรณ์นี้" : "ออฟไลน์ · เก็บสำเนาในอุปกรณ์นี้";
+}
+function persist(message="บันทึกบน Cloud แล้ว") {
   state.updatedAt = Date.now();
   currentEvent().updatedAt = state.updatedAt;
   localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+  const payload = clone(state);
   const saveState = document.querySelector("#saveState");
   saveState.innerHTML = "<i></i> กำลังบันทึกบน Cloud…";
+  queuedSaves += 1;
   isSaving = true;
-  try {
-    const response = await fetch("/api/planner", { method:"PUT", headers:{ "content-type":"application/json" }, body:JSON.stringify({ data:state, baseRevision:cloudRevision }) });
-    if (response.status === 409) {
-      const latest = await response.json();
-      if (latest?.data) { state = normalizePlanner(latest.data); cloudRevision = latest.revision || 0; localStorage.setItem(scopedStorageKey(), JSON.stringify(state)); render(); }
-      saveState.innerHTML = "<i></i> รับข้อมูลล่าสุดของบัญชีแล้ว";
-      showToast("บัญชีนี้มีข้อมูลใหม่กว่า ระบบโหลดข้อมูลล่าสุดให้แล้ว");
+  const saveJob = async () => {
+    try {
+      for (let attempt=0;attempt<3;attempt+=1) {
+        const response = await fetch("/api/planner", { method:"PUT", headers:{ "content-type":"application/json" }, body:JSON.stringify({ data:payload, baseRevision:cloudRevision }) });
+        if (response.status === 409) {
+          const latest = await response.json();
+          cloudRevision = Number(latest?.revision) || cloudRevision;
+          saveState.innerHTML = "<i></i> พบข้อมูลจากอีกอุปกรณ์ · กำลังซิงค์…";
+          continue;
+        }
+        if(response.status===401){saveState.innerHTML="<i></i> เข้าสู่ระบบเพื่อบันทึกบน Cloud";if(message)showToast("กรุณาเข้าสู่ระบบเพื่อบันทึกข้อมูลส่วนตัว");return false;}
+        if(response.status===403){const readOnly=isReadOnlyUser();saveState.innerHTML=`<i></i> ${readOnly?"บัญชีดูอย่างเดียว":"บัญชียังไม่ได้รับสิทธิ์"}`;if(message)showToast(readOnly?"บัญชีนี้ไม่มีสิทธิ์แก้ไขแปลน":"กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มบัญชี");return false;}
+        if (!response.ok) throw new Error("save failed");
+        const saved = await response.json();
+        cloudRevision = Number(saved.revision) || cloudRevision;
+        saveState.innerHTML = "<i></i> บันทึกบน Cloud แล้ว";
+        if (message) showToast(message);
+        return true;
+      }
+      saveState.innerHTML = "<i></i> มีข้อมูลใหม่จากอีกอุปกรณ์ · กรุณาลองอีกครั้ง";
+      if(message)showToast("ยังบันทึกไม่ได้เพราะอีกอุปกรณ์กำลังแก้ไขอยู่");
       return false;
+    } catch (_) {
+      saveState.innerHTML = `<i></i> ${standaloneStatus()}`;
+      if (message) showToast("ยังเชื่อมต่อ Cloud ไม่ได้ ระบบเก็บสำเนาในอุปกรณ์นี้แล้ว");
+      return false;
+    } finally {
+      queuedSaves = Math.max(0,queuedSaves-1);
+      isSaving = queuedSaves > 0;
     }
-    if(response.status===401){saveState.innerHTML="<i></i> เข้าสู่ระบบเพื่อบันทึกบน Cloud";showToast("กรุณาเข้าสู่ระบบเพื่อบันทึกข้อมูลส่วนตัว");return false;}
-    if(response.status===403){saveState.innerHTML="<i></i> บัญชียังไม่ได้รับสิทธิ์";showToast("กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มบัญชี");return false;}
-    if (!response.ok) throw new Error("save failed");
-    const saved = await response.json();
-    cloudRevision = saved.revision || cloudRevision;
-    saveState.innerHTML = "<i></i> บันทึกบน Cloud แล้ว";
-    if (message) showToast(message);
-    return true;
-  } catch (_) {
-    saveState.innerHTML = "<i></i> ออฟไลน์ · เก็บสำเนาชั่วคราว";
-    if (message) showToast("ยังเชื่อมต่อ Cloud ไม่ได้ เก็บสำเนาบนเครื่องแล้ว");
-    return false;
-  } finally { isSaving = false; }
+  };
+  const result = saveTail.catch(()=>false).then(saveJob);
+  saveTail = result;
+  return result;
 }
 
 async function hydrate() {
@@ -204,7 +227,7 @@ async function hydrate() {
     localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
     saveState.innerHTML = "<i></i> เชื่อมต่อ Cloud แล้ว";
     render();
-  } catch (_) { saveState.innerHTML = "<i></i> ออฟไลน์ · ใช้สำเนาล่าสุด"; }
+  } catch (_) { saveState.innerHTML = `<i></i> ${standaloneStatus()}`; }
 }
 async function syncFromCloud() {
   if (isSaving || document.visibilityState === "hidden") return;
@@ -221,9 +244,9 @@ async function syncFromCloud() {
 }
 async function hydrateMember() {
   try {
-    const response = await fetch("/api/me"); if (!response.ok) return; const member = await response.json();
-    memberProfile=member;storageScope=member.authenticated?(member.id||member.email||"member"):"anonymous";const name = member.name || member.email || "ผู้เยี่ยมชม"; document.querySelector("#memberName").textContent = member.role==="admin"?`${name} · Admin`:name; document.querySelector(".member-avatar").textContent = name.trim().charAt(0).toUpperCase() || "S";document.querySelector(".member-badge").hidden=!member.authenticated;document.querySelector("#signInButton").hidden=member.authenticated;document.querySelector("#signOutButton").hidden=!member.authenticated;document.querySelector("#membersButton").hidden=member.role!=="admin";document.querySelector("#accessBanner").hidden=!(member.authenticated&&!member.access);
-  } catch (_) {}
+    const response = await fetch("/api/me"); if (!response.ok) throw new Error(); const member = await response.json();
+    memberProfile=member;storageScope=member.authenticated?(member.id||member.email||"member"):"anonymous";const name = member.name || member.email || "ผู้เยี่ยมชม"; document.querySelector("#memberName").textContent = member.role==="admin"?`${name} · Admin`:member.role==="viewer"?`${name} · ดูอย่างเดียว`:name; document.querySelector(".member-avatar").textContent = name.trim().charAt(0).toUpperCase() || "S";document.querySelector(".member-badge").hidden=!member.authenticated;document.querySelector("#signInButton").hidden=member.authenticated;document.querySelector("#signOutButton").hidden=!member.authenticated;document.querySelector("#membersButton").hidden=member.role!=="admin";document.querySelector("#accessBanner").hidden=!(member.authenticated&&!member.access);document.body.classList.toggle("read-only-user",member.role==="viewer");const layoutTab=document.querySelector('[data-view="layout"]');if(layoutTab)layoutTab.hidden=member.role==="viewer";if(member.role==="viewer"&&activeView==="layout")activeView="interactive";
+  } catch (_) {document.querySelector(".member-badge").hidden=true;document.querySelector("#membersButton").hidden=true;document.querySelector("#signOutButton").hidden=true;document.querySelector("#signInButton").hidden=["localhost","127.0.0.1"].includes(location.hostname);}
 }
 
 function render() {
@@ -285,7 +308,7 @@ function renderZones() {
     const displayId=geometry.kind==="stage"?(id==="EVENT"?"EVENT":`STAGE ${id.replace("STAGE-","")}`):id;
     zone.innerHTML = `${geometry.locked && activeView === "layout" ? '<span class="lock-icon">◆</span>' : ""}<span class="zone-id">${displayId}</span><span class="zone-name">${escapeHTML(assignment.shopName || STATUS[assignment.status])}</span><span class="zone-area">${areaOf(geometry)} ตร.ม.</span>${activeView === "layout" && !geometry.locked ? '<span class="resize-handle" aria-hidden="true"></span>' : ""}`;
     zone.setAttribute("aria-label", `${slotLabel(id,geometry)} ${assignment.shopName || "ว่าง"} ${dimensionText(geometry)}`);
-    if (activeView === "interactive") bindAssignmentDrag(zone, id);
+    if (activeView === "interactive" && !isReadOnlyUser()) bindAssignmentDrag(zone, id);
     if (activeView === "layout") bindLayoutEditing(zone, id);
     if (activeView !== "reference") zone.addEventListener("click", eventClick => { if (zone.dataset.moved === "true") { zone.dataset.moved = "false"; return; } activeView === "layout" ? selectSpace(id) : handleSpaceClick(id); });
     zoneLayer.append(zone);
@@ -421,7 +444,7 @@ document.querySelector("#deleteSpaceButton").addEventListener("click",()=>{if(!s
 document.querySelector("#deleteColumnButton").addEventListener("click",()=>{if(!isColumnId(selectedId))return;const event=currentEvent(),column=event.draftColumns[selectedId];if(column?.locked&&!confirm("เสานี้ถูกล็อกอยู่ ต้องการลบออกจากฉบับร่างหรือไม่?"))return;if(!column?.locked&&!confirm("ลบเสานี้ออกจากฉบับร่างหรือไม่?"))return;snapshot();delete event.draftColumns[selectedId];event.draftDirty=true;selectedId=null;void persist("ลบเสาออกจากฉบับร่างแล้ว");render()});
 document.querySelector("#deleteGuideButton").addEventListener("click",()=>{if(!isGuideId(selectedId))return;const event=currentEvent(),guide=event.draftGuides[selectedId];if(guide?.locked&&!confirm("ระยะนี้ถูกล็อกอยู่ ต้องการลบออกจากฉบับร่างหรือไม่?"))return;if(!guide?.locked&&!confirm("ลบระยะร่นนี้ออกจากฉบับร่างหรือไม่?"))return;snapshot();delete event.draftGuides[selectedId];event.draftDirty=true;selectedId=null;void persist("ลบระยะร่นออกจากฉบับร่างแล้ว");render()});
 
-function setActiveView() { document.querySelectorAll("[data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===activeView)); selectedId=null;swapSource=null;render(); }
+function setActiveView() { localStorage.setItem(ACTIVE_VIEW_KEY,activeView);document.querySelectorAll("[data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===activeView)); selectedId=null;swapSource=null;render(); }
 document.querySelectorAll("[data-view]").forEach(button=>button.addEventListener("click",()=>{activeView=button.dataset.view;setActiveView()}));
 const objectScaleRange=document.querySelector("#objectScaleRange");
 const beginScaleChange=()=>{if(objectScaleRange.dataset.editing)return;snapshot();objectScaleRange.dataset.editing="true";};
@@ -470,7 +493,7 @@ async function loadMembers(){
   const list=document.querySelector("#memberList");list.innerHTML='<div class="member-row"><span class="muted">กำลังโหลดสมาชิก…</span></div>';
   try{const response=await fetch("/api/members",{headers:{accept:"application/json"}});if(!response.ok)throw new Error();const data=await response.json();renderMembers(data.members||[]);}catch(_){list.innerHTML='<div class="member-row"><span class="muted">ไม่สามารถโหลดรายชื่อสมาชิกได้</span></div>';}
 }
-function renderMembers(members){document.querySelector("#memberList").innerHTML=members.map(member=>`<div class="member-row"><div><strong>${escapeHTML(member.name||member.email)}</strong><small>${escapeHTML(member.email)}</small></div><span class="role-badge ${member.role==="admin"?"admin":""}">${member.role==="admin"?"Admin Developer":"สมาชิก"}</span>${member.protected?'<span class="muted">บัญชีหลัก</span>':`<button class="button danger compact" data-remove-member="${escapeHTML(member.email)}" type="button">ลบสิทธิ์</button>`}</div>`).join("")||'<div class="member-row"><span class="muted">ยังไม่มีสมาชิก</span></div>';document.querySelectorAll("[data-remove-member]").forEach(button=>button.addEventListener("click",async()=>{if(!confirm(`ลบสิทธิ์ ${button.dataset.removeMember} หรือไม่?`))return;button.disabled=true;try{const response=await fetch(`/api/members?email=${encodeURIComponent(button.dataset.removeMember)}`,{method:"DELETE"});if(!response.ok)throw new Error();const data=await response.json();renderMembers(data.members||[]);showToast("ลบสิทธิ์สมาชิกแล้ว");}catch(_){button.disabled=false;showToast("ลบสมาชิกไม่สำเร็จ");}}));}
+function renderMembers(members){const roleLabel={admin:"Admin Developer",editor:"แก้ไขแปลน",viewer:"ดูอย่างเดียว",member:"แก้ไขแปลน"};document.querySelector("#memberList").innerHTML=members.map(member=>`<div class="member-row"><div><strong>${escapeHTML(member.name||member.email)}</strong><small>${escapeHTML(member.email)}</small></div>${member.protected?`<span class="role-badge admin">${roleLabel.admin}</span><span class="muted">บัญชีหลัก</span>`:`<select class="member-role-select" data-member-role="${escapeHTML(member.email)}" aria-label="สิทธิ์ของ ${escapeHTML(member.email)}"><option value="editor" ${member.role!=="viewer"?"selected":""}>แก้ไขแปลน</option><option value="viewer" ${member.role==="viewer"?"selected":""}>ดูอย่างเดียว</option></select><button class="button danger compact" data-remove-member="${escapeHTML(member.email)}" type="button">ลบสิทธิ์</button>`}</div>`).join("")||'<div class="member-row"><span class="muted">ยังไม่มีสมาชิก</span></div>';document.querySelectorAll("[data-member-role]").forEach(select=>select.addEventListener("change",async()=>{select.disabled=true;try{const response=await fetch("/api/members",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({email:select.dataset.memberRole,role:select.value})});if(!response.ok)throw new Error();const data=await response.json();renderMembers(data.members||[]);showToast("อัปเดตสิทธิ์สมาชิกแล้ว");}catch(_){select.disabled=false;showToast("เปลี่ยนสิทธิ์ไม่สำเร็จ");}}));document.querySelectorAll("[data-remove-member]").forEach(button=>button.addEventListener("click",async()=>{if(!confirm(`ลบสิทธิ์ ${button.dataset.removeMember} หรือไม่?`))return;button.disabled=true;try{const response=await fetch(`/api/members?email=${encodeURIComponent(button.dataset.removeMember)}`,{method:"DELETE"});if(!response.ok)throw new Error();const data=await response.json();renderMembers(data.members||[]);showToast("ลบสิทธิ์สมาชิกแล้ว");}catch(_){button.disabled=false;showToast("ลบสมาชิกไม่สำเร็จ");}}));}
 document.querySelector("#membersButton").addEventListener("click",()=>{membersDialog.showModal();void loadMembers();});
 document.querySelector("#memberAddForm").addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector("button[type=submit]"),values=Object.fromEntries(new FormData(form));button.disabled=true;try{const response=await fetch("/api/members",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(values)});if(!response.ok)throw new Error();const data=await response.json();renderMembers(data.members||[]);form.reset();showToast("เพิ่มสมาชิกแล้ว");}catch(_){showToast("เพิ่มสมาชิกไม่สำเร็จ กรุณาตรวจสอบอีเมล");}finally{button.disabled=false;}});
 
