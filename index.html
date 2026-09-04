@@ -21,6 +21,7 @@
         <div class="event-picker"><label for="eventSelect">งานที่กำลังเปิด</label><select id="eventSelect" aria-label="เลือกงานกิจกรรม"></select><button class="button ghost compact" id="libraryButton" type="button">คลังงาน</button></div>
         <div class="top-actions">
           <span class="member-badge" title="บัญชีที่กำลังใช้งาน"><span class="member-avatar">S</span><span id="memberName">สมาชิกทีม</span></span>
+          <button class="button ghost compact" id="membersButton" type="button" hidden>จัดการสมาชิก</button>
           <a class="button ghost compact auth-button" id="signInButton" href="/signin-with-chatgpt?return_to=%2F" target="_top" hidden>เข้าสู่ระบบ</a>
           <a class="button ghost compact auth-button" id="signOutButton" href="/signout-with-chatgpt?return_to=%2F" target="_top" hidden>ออกจากระบบ</a>
           <span class="save-state" id="saveState"><i></i> กำลังเชื่อมต่อ Cloud</span>
@@ -31,6 +32,7 @@
       </header>
 
       <main>
+        <div class="access-banner" id="accessBanner" hidden><strong>บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน</strong><span>กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มอีเมลของคุณ</span></div>
         <section class="summary" aria-label="สรุปสถานะพื้นที่">
           <div class="summary-intro"><span class="lock-badge" id="planBadge">● LOCKED PLAN</span><h2 id="eventTitle">แปลนกิจกรรม</h2><p id="eventMeta">ข้อมูลพื้นที่และร้านค้าบันทึกบน Cloud</p></div>
           <div class="metric"><span>พื้นที่ทั้งหมด</span><strong id="totalSpaces">25</strong><small>จุด</small></div>
@@ -44,16 +46,17 @@
             <div class="plan-toolbar">
               <div class="view-switch" role="tablist" aria-label="รูปแบบการแสดงผล"><button class="active" data-view="interactive" role="tab" type="button">แปลนใช้งาน</button><button data-view="reference" role="tab" type="button">ภาพต้นฉบับ</button><button data-view="layout" role="tab" type="button">โหมดปรับพื้นที่</button></div>
               <div class="plan-controls" id="standardControls"><label class="search-box"><span>⌕</span><input id="searchInput" type="search" placeholder="ค้นหาร้าน หรือเลขพื้นที่" /></label><select id="statusFilter" aria-label="กรองตามสถานะ"><option value="all">ทุกสถานะ</option><option value="available">ว่าง</option><option value="hold">จองชั่วคราว</option><option value="confirmed">ยืนยันแล้ว</option><option value="setup">กำลังติดตั้ง</option></select><button class="icon-button" id="undoButton" type="button" title="ย้อนกลับ" aria-label="ย้อนกลับ">↶</button></div>
-              <div class="layout-controls" id="layoutControls" hidden><button class="button add-space compact" id="addBoothButton" type="button">＋ เพิ่มบูธ</button><button class="button add-stage compact" id="addStageButton" type="button">＋ เพิ่มเวที</button><button class="button add-column compact" id="addColumnButton" type="button">＋ เพิ่มเสา</button><button class="button add-guide compact" id="addGuideButton" type="button">＋ เพิ่มระยะร่น</button><label class="switch-control"><input id="gridToggle" type="checkbox" checked /> ดูดเข้ากริด</label><button class="button ghost compact" id="lockAllButton" type="button">ล็อกทั้งหมด</button><button class="button ghost compact" id="resetLayoutButton" type="button">คืนค่าแปลนเดิม</button><button class="button primary compact" id="publishLayoutButton" type="button">ล็อกและนำไปใช้งาน</button></div>
+              <div class="layout-controls" id="layoutControls" hidden><button class="button add-space compact" id="addBoothButton" type="button">＋ เพิ่มบูธ</button><button class="button add-stage compact" id="addStageButton" type="button">＋ เพิ่มเวที</button><button class="button add-column compact" id="addColumnButton" type="button">＋ เพิ่มเสา</button><button class="button add-guide compact" id="addGuideButton" type="button">＋ เพิ่มระยะร่น</button><button class="button ghost compact" id="duplicateSelectedButton" type="button" disabled>⧉ ทำสำเนาที่เลือก</button><label class="switch-control"><input id="gridToggle" type="checkbox" checked /> ดูดเข้ากริด</label><label class="precision-control">ความละเอียด<select id="snapPrecision" aria-label="ความละเอียดการลาก"><option value="0.5">จัดเร็ว</option><option value="0.1">ละเอียด</option></select></label><button class="button ghost compact" id="lockAllButton" type="button">ล็อกทั้งหมด</button><button class="button ghost compact" id="resetLayoutButton" type="button">คืนค่าแปลนเดิม</button><button class="button primary compact" id="publishLayoutButton" type="button">ล็อกและนำไปใช้งาน</button></div>
             </div>
-            <div class="layout-notice" id="layoutNotice" hidden><strong>ฉบับร่าง</strong> เพิ่มและลากพื้นที่หรือเสาได้ เสาที่ล็อกแล้วจะไม่ขยับ — แปลนใช้งานจะเปลี่ยนเมื่อกด “ล็อกและนำไปใช้งาน”</div>
+            <div class="layout-notice" id="layoutNotice" hidden><strong>ฉบับร่าง</strong> เส้นสีฟ้าช่วยจัดแนว · กรอบแดงเตือนพื้นที่ซ้อน · เสาที่ล็อกแล้วจะไม่ขยับ — แปลนใช้งานจะเปลี่ยนเมื่อกด “ล็อกและนำไปใช้งาน”</div>
             <div class="scale-toolbar" id="scaleToolbar" hidden>
               <label><span>ขนาดพื้นที่เทียบกับแปลน <strong id="objectScaleValue">68%</strong></span><input id="objectScaleRange" type="range" min="40" max="120" step="1" value="68" /></label>
-              <p>ใช้ย่อ–ขยายบูท เวที และเส้นระยะพร้อมกัน โดยค่ากว้าง × ลึกจริงไม่เปลี่ยน</p>
+              <label><span>ความโปร่งใสพื้นหลัง <strong id="backgroundOpacityValue">35%</strong></span><input id="backgroundOpacityRange" type="range" min="8" max="100" step="1" value="35" /></label>
               <label><span>ซูมดูแปลน <strong id="viewZoomValue">100%</strong></span><input id="viewZoomRange" type="range" min="75" max="180" step="5" value="100" /></label>
               <button class="button ghost compact" id="fitPlanButton" type="button">พอดีหน้าจอ</button>
             </div>
-            <div class="plan-scroll"><div class="plan-stage" id="planStage"><img id="planImage" src="./assets/approved-plan.png" alt="แปลนพื้นที่กิจกรรมต้นฉบับ" draggable="false" /><div class="stage-tint"></div><div class="zone-layer" id="zoneLayer" aria-label="พื้นที่กิจกรรมแบบโต้ตอบ"></div><div class="drop-hint" id="dropHint">เลือกพื้นที่ปลายทางเพื่อสลับร้าน</div></div></div>
+            <div class="plan-scroll" id="planScroll"><div class="plan-stage" id="planStage"><img id="planImage" src="./assets/approved-plan.png" alt="แปลนพื้นที่กิจกรรมต้นฉบับ" draggable="false" /><div class="stage-tint"></div><div class="zone-layer" id="zoneLayer" aria-label="พื้นที่กิจกรรมแบบโต้ตอบ"></div><div class="drop-hint" id="dropHint">เลือกพื้นที่ปลายทางเพื่อสลับร้าน</div></div></div>
+            <div class="map-navigation" aria-label="ควบคุมมุมมองแปลน"><span>ลากพื้นหลังเพื่อเลื่อน · จีบ 2 นิ้วเพื่อซูม</span><div><button class="icon-button" id="mobileZoomOut" type="button" aria-label="ซูมออก">−</button><button class="button ghost compact" id="mobileFitPlan" type="button">ดูทั้งหมด</button><button class="icon-button" id="mobileZoomIn" type="button" aria-label="ซูมเข้า">＋</button></div></div>
             <div class="legend" id="legend"><span><i class="dot available"></i>ว่าง</span><span><i class="dot hold"></i>จองชั่วคราว</span><span><i class="dot confirmed"></i>ยืนยันแล้ว</span><span><i class="dot setup"></i>กำลังติดตั้ง</span><span class="legend-help" id="legendHelp">แตะ 2 พื้นที่ หรือใช้เมาส์ลาก เพื่อสลับร้าน</span></div>
           </div>
 
@@ -71,20 +74,20 @@
             <form id="layoutForm" hidden>
               <div class="editor-heading"><div><p class="eyebrow">SPACE GEOMETRY</p><h3 id="layoutEditorTitle">พื้นที่ 1</h3></div><button class="close-editor" data-close-editor type="button" aria-label="ปิด">×</button></div><div class="selected-status draft">กำลังแก้ไขฉบับร่าง</div>
               <div class="dimension-card"><span>ขนาดปัจจุบัน</span><strong id="dimensionSummary">2 × 2 ม.</strong><small id="areaSummary">4 ตร.ม.</small></div>
-              <label>ประเภทพื้นที่<select name="kind"><option value="booth">บูธร้านค้า</option><option value="stage">เวที / Stage</option></select></label><div class="form-grid"><label>ความกว้าง (เมตร)<input name="widthM" type="number" min="0.5" max="30" step="0.1" /></label><label>ความลึก (เมตร)<input name="depthM" type="number" min="0.5" max="30" step="0.1" /></label></div><div class="position-grid"><label>ตำแหน่ง X<input name="left" type="number" min="0" max="100" step="0.1" /></label><label>ตำแหน่ง Y<input name="top" type="number" min="0" max="100" step="0.1" /></label></div>
+              <label>ประเภทพื้นที่<select name="kind"><option value="booth">บูธร้านค้า</option><option value="stage">เวที / Stage</option></select></label><div class="form-grid"><label>ความกว้าง (เมตร)<input name="widthM" type="number" min="0.5" max="30" step="0.1" /></label><label>ความลึก (เมตร)<input name="depthM" type="number" min="0.5" max="30" step="0.1" /></label></div><div class="position-grid"><label>ตำแหน่ง X<input name="left" type="number" min="0" max="100" step="0.1" /></label><label>ตำแหน่ง Y<input name="top" type="number" min="0" max="100" step="0.1" /></label></div><div class="form-grid"><label>องศาการหมุน<input name="rotation" type="number" min="0" max="359" step="1" /></label><button class="button ghost rotate-button" id="rotateSelectedButton" type="button">↻ หมุน 90°</button></div>
               <label class="lock-space"><input name="locked" type="checkbox" /> ล็อกพื้นที่นี้ ป้องกันการลากผิด</label><div class="layout-form-help">ปรับด้วยตัวเลขเพื่อความแม่นยำ หรือใช้เมาส์ลากพื้นที่และจุดมุมบนแปลน</div><div class="form-actions"><button class="button danger" id="deleteSpaceButton" type="button">ลบพื้นที่</button><button class="button ghost" id="resetSelectedButton" type="button">คืนค่า</button><button class="button primary wide" type="submit">บันทึกฉบับร่าง</button></div>
             </form>
             <form id="columnForm" hidden>
               <div class="editor-heading"><div><p class="eyebrow">STRUCTURAL COLUMN</p><h3 id="columnEditorTitle">เสา 1</h3></div><button class="close-editor" data-close-editor type="button" aria-label="ปิด">×</button></div><div class="selected-status column-status">เสาในแปลนฉบับร่าง</div>
               <div class="column-preview" aria-hidden="true"><span></span><strong>เสาวงกลม</strong></div>
               <div class="position-grid"><label>ตำแหน่ง X<input name="left" type="number" min="0" max="100" step="0.1" /></label><label>ตำแหน่ง Y<input name="top" type="number" min="0" max="100" step="0.1" /></label></div>
-              <label>ขนาดเสาบนแปลน<input name="size" type="number" min="1" max="8" step="0.1" /></label>
+              <label>ขนาดเสาบนแปลน<input name="size" type="number" min="0.3" max="8" step="0.1" /></label>
               <label class="lock-space"><input name="locked" type="checkbox" /> ล็อกเสานี้ ป้องกันการขยับ</label><div class="layout-form-help">ปลดล็อกเพื่อเลื่อนเสา แล้วกดบันทึกฉบับร่าง เมื่อจัดเสร็จให้กด “ล็อกและนำไปใช้งาน”</div><div class="form-actions"><button class="button danger" id="deleteColumnButton" type="button">ลบเสา</button><button class="button primary wide" type="submit">บันทึกฉบับร่าง</button></div>
             </form>
             <form id="guideForm" hidden>
               <div class="editor-heading"><div><p class="eyebrow">CLEARANCE GUIDE</p><h3 id="guideEditorTitle">ระยะร่น 1</h3></div><button class="close-editor" data-close-editor type="button" aria-label="ปิด">×</button></div><div class="selected-status guide-status">เส้นวัดระยะที่ปรับได้</div>
               <div class="dimension-card"><span>ระยะปัจจุบัน</span><strong id="guideSummary">1.2 ม.</strong><small>ลากปลายเส้นเพื่อปรับ</small></div>
-              <label>แนวเส้น<select name="orientation"><option value="horizontal">แนวนอน</option><option value="vertical">แนวตั้ง</option></select></label><label>ระยะ (เมตร)<input name="lengthM" type="number" min="0.1" max="30" step="0.1" /></label>
+              <div class="form-grid"><label>แนวเส้น<select name="orientation"><option value="horizontal">แนวนอน</option><option value="vertical">แนวตั้ง</option></select></label><button class="button ghost rotate-button" id="rotateGuideButton" type="button">↻ หมุน 90°</button></div><label>ระยะ (เมตร)<input name="lengthM" type="number" min="0.1" max="30" step="0.1" /></label>
               <div class="position-grid"><label>ตำแหน่ง X<input name="left" type="number" min="0" max="100" step="0.1" /></label><label>ตำแหน่ง Y<input name="top" type="number" min="0" max="100" step="0.1" /></label></div>
               <label class="lock-space"><input name="locked" type="checkbox" /> ล็อกระยะนี้ ป้องกันการขยับ</label><div class="layout-form-help">ลากเส้นเพื่อย้ายตำแหน่ง หรือลากจุดปลายเพื่อเพิ่ม–ลดระยะตามรูปแบบงานแต่ละครั้ง</div><div class="form-actions"><button class="button danger" id="deleteGuideButton" type="button">ลบระยะ</button><button class="button primary wide" type="submit">บันทึกฉบับร่าง</button></div>
             </form>
@@ -99,6 +102,12 @@
         <div class="dialog-actions"><button class="button primary" id="newEventButton" type="button">＋ สร้างงานใหม่</button><button class="button ghost" id="duplicateEventButton" type="button">ทำสำเนาแปลนงานนี้</button><button class="button ghost" id="archiveEventButton" type="button">เก็บงานเข้าคลัง</button></div>
         <div class="event-detail-form"><label>ชื่องาน<input id="eventNameInput" type="text" /></label><label>วันที่เริ่ม<input id="eventStartInput" type="date" /></label><label>วันที่สิ้นสุด<input id="eventEndInput" type="date" /></label><button class="button primary" id="saveEventButton" type="button">บันทึกข้อมูลงาน</button></div>
         <div class="library-list" id="libraryList"></div><div class="version-list"><h3>ประวัติแปลนที่ล็อก</h3><div id="versionList"></div></div>
+      </dialog>
+      <dialog class="library-dialog members-dialog" id="membersDialog">
+        <form method="dialog" class="dialog-head"><div><p class="eyebrow">ADMIN CONTROL</p><h2>จัดการสมาชิก</h2></div><button class="close-editor" value="close" aria-label="ปิด">×</button></form>
+        <form class="member-add-form" id="memberAddForm"><label>ชื่อผู้ใช้<input name="name" type="text" placeholder="ชื่อสมาชิก" autocomplete="off" /></label><label>อีเมลที่ใช้เข้าสู่ระบบ<input name="email" type="email" placeholder="name@example.com" required autocomplete="off" /></label><button class="button primary" type="submit">＋ เพิ่มสมาชิก</button></form>
+        <div class="member-note">สมาชิกแต่ละคนมีข้อมูลและแปลน Cloud แยกจากกัน ผู้ดูแลระบบสามารถเพิ่มหรือลดสิทธิ์ได้จากหน้านี้</div>
+        <div class="member-list" id="memberList"><div class="muted">กำลังโหลดสมาชิก…</div></div>
       </dialog>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
