@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spacaplanner",
+  "main": "worker/cloudflare.js",
+  "compatibility_date": "2026-09-05",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": { "directory": "dist/client", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  "d1_databases": [{ "binding": "DB", "database_name": "space-planner-db", "database_id": "0de4fd5c-e16e-4a39-bc4b-8ed92d4f187d", "migrations_dir": "drizzle" }],
+  "keep_vars": true
+}
