@@ -122,6 +122,9 @@ let history = [];
 let isSaving = false;
 let queuedSaves = 0;
 let saveTail = Promise.resolve(true);
+let syncBlocked = false;
+let unsynced = false;
+const pendingKey = () => `${scopedStorageKey()}-pending`;
 let toastTimer;
 let memberProfile = { authenticated:false, access:false, role:"visitor" };
 
@@ -170,25 +173,33 @@ function persist(message="บันทึกบน Cloud แล้ว") {
   currentEvent().updatedAt = state.updatedAt;
   localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
   const payload = clone(state);
+  unsynced = true;
+  localStorage.setItem(pendingKey(), JSON.stringify({ baseRevision:cloudRevision }));
   const saveState = document.querySelector("#saveState");
   saveState.innerHTML = "<i></i> กำลังบันทึกบน Cloud…";
   queuedSaves += 1;
   isSaving = true;
   const saveJob = async () => {
     try {
+      if (syncBlocked) { saveState.textContent = 'รอเลือกฉบับข้อมูล · ยังไม่บันทึกบน Cloud'; return false; }
       for (let attempt=0;attempt<3;attempt+=1) {
         const response = await fetch("/api/planner", { method:"PUT", headers:{ "content-type":"application/json" }, body:JSON.stringify({ data:payload, baseRevision:cloudRevision }) });
         if (response.status === 409) {
           const latest = await response.json();
-          cloudRevision = Number(latest?.revision) || cloudRevision;
-          saveState.innerHTML = "<i></i> พบข้อมูลจากอีกอุปกรณ์ · กำลังซิงค์…";
-          continue;
+          syncBlocked = true;
+          document.querySelector('#syncConflict').hidden = false;
+          saveState.textContent = 'มีข้อมูลจากอีกอุปกรณ์ · รอเลือกฉบับ';
+          return false;
         }
         if(response.status===401){saveState.innerHTML="<i></i> เข้าสู่ระบบเพื่อบันทึกบน Cloud";if(message)showToast("กรุณาเข้าสู่ระบบเพื่อบันทึกข้อมูลส่วนตัว");return false;}
         if(response.status===403){const readOnly=isReadOnlyUser();saveState.innerHTML=`<i></i> ${readOnly?"บัญชีดูอย่างเดียว":"บัญชียังไม่ได้รับสิทธิ์"}`;if(message)showToast(readOnly?"บัญชีนี้ไม่มีสิทธิ์แก้ไขแปลน":"กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มบัญชี");return false;}
         if (!response.ok) throw new Error("save failed");
         const saved = await response.json();
         cloudRevision = Number(saved.revision) || cloudRevision;
+        if (JSON.stringify(state) === JSON.stringify(payload)) {
+          unsynced = false;
+          localStorage.removeItem(pendingKey());
+        } else localStorage.setItem(pendingKey(), JSON.stringify({ baseRevision:cloudRevision }));
         saveState.innerHTML = "<i></i> บันทึกบน Cloud แล้ว";
         if (message) showToast(message);
         return true;
@@ -217,6 +228,13 @@ async function hydrate() {
     if(response.status===403){state=loadFallback();cloudRevision=0;saveState.innerHTML="<i></i> บัญชียังไม่ได้รับสิทธิ์";document.querySelector("#accessBanner").hidden=false;render();return;}
     if (!response.ok) throw new Error();
     const cloud = await response.json();
+    const pending = localStorage.getItem(pendingKey());
+    if (pending && cloud.authenticated) {
+      state = loadFallback(); unsynced = true; syncBlocked = true;
+      cloudRevision = cloud.revision || 0;
+      document.querySelector('#syncConflict').hidden = false;
+      saveState.textContent = 'มีฉบับที่ยังไม่ซิงค์ · กรุณาเลือกฉบับ'; render(); return;
+    }
     if (cloud?.data?.events) {
       state = normalizePlanner(cloud.data); cloudRevision = cloud.revision || 0;
     } else if(cloud?.authenticated){
@@ -230,7 +248,7 @@ async function hydrate() {
   } catch (_) { saveState.innerHTML = `<i></i> ${standaloneStatus()}`; }
 }
 async function syncFromCloud() {
-  if (isSaving || document.visibilityState === "hidden") return;
+  if (isSaving || unsynced || syncBlocked || document.visibilityState === "hidden" || selectedId || document.activeElement?.closest('form')) return;
   try {
     const response = await fetch("/api/planner", { headers:{ accept:"application/json" } });
     if (!response.ok) return;
@@ -503,6 +521,31 @@ document.querySelectorAll("[data-export]").forEach(button=>button.addEventListen
 function download(blob,name){const link=Object.assign(document.createElement("a"),{href:URL.createObjectURL(blob),download:name});link.click();setTimeout(()=>URL.revokeObjectURL(link.href),500)}
 function safeName(value){return value.replace(/[^a-zA-Z0-9ก-๙_-]+/g,"-").replace(/^-|-$/g,"")||"event"}
 function exportJSON(){download(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),`space-planner-${new Date().toISOString().slice(0,10)}.json`);showToast("ส่งออกข้อมูลสำรองแล้ว")}
+document.querySelector('#backupConflict').addEventListener('click', exportJSON);
+document.querySelector('#loadCloudConflict').addEventListener('click', async () => {
+  if (!confirm('ใช้ข้อมูลบน Cloud แทนฉบับนี้หรือไม่? หากต้องการเก็บฉบับนี้ ให้กดสำรอง JSON ก่อน')) return;
+  try {
+    const response = await fetch('/api/planner'); if (!response.ok) throw new Error();
+    const cloud = await response.json();
+    if (!cloud.data) { showToast('Cloud ยังไม่มีข้อมูล กรุณาบันทึกฉบับนี้'); return; }
+    state = normalizePlanner(cloud.data); cloudRevision = cloud.revision;
+    localStorage.setItem(scopedStorageKey(), JSON.stringify(state)); localStorage.removeItem(pendingKey());
+    syncBlocked = false; unsynced = false; history = []; selectedId = null;
+    document.querySelector('#syncConflict').hidden = true; render();
+    document.querySelector('#saveState').textContent = 'ใช้ข้อมูลล่าสุดบน Cloud แล้ว';
+  } catch { showToast('ยังเชื่อมต่อ Cloud ไม่ได้ ฉบับบนเครื่องยังอยู่'); }
+});
+document.querySelector('#keepLocalConflict').addEventListener('click', async () => {
+  if (!confirm('ยืนยันใช้ฉบับนี้แทนข้อมูลล่าสุดบน Cloud?')) return;
+  try {
+    await saveTail;
+    const response = await fetch('/api/planner'); if (!response.ok) throw new Error();
+    const cloud = await response.json(); cloudRevision = cloud.revision || 0;
+    syncBlocked = false; document.querySelector('#syncConflict').hidden = true;
+    await persist();
+  } catch { showToast('ยังบันทึกไม่ได้ กรุณาลองอีกครั้ง'); }
+});
+window.addEventListener('beforeunload', event => { if (unsynced || isSaving) { event.preventDefault(); event.returnValue = ''; } });
 function exportCSV(){const event=currentEvent();const rows=[["พื้นที่","ประเภทพื้นที่","ชื่อร้าน","ประเภทสินค้า","กว้าง (ม.)","ลึก (ม.)","ตร.ม.","สถานะ","ผู้ติดต่อ","เบอร์โทร","อีเมล/LINE","วันที่เริ่ม","วันที่สิ้นสุด","รายละเอียด"]];for(const id of spaceIds(event.publishedLayout)){const a=event.spaces[id].assignment,g=event.publishedLayout[id];rows.push([slotLabel(id,g),g.kind==="stage"?"เวที":"บูธ",a.shopName,a.category,g.widthM,g.depthM,areaOf(g),STATUS[a.status],a.contact,a.phone,a.email,a.startDate,a.endDate,a.notes])}const csv="\ufeff"+rows.map(row=>row.map(value=>`"${String(value??"").replaceAll('"','""')}"`).join(",")).join("\r\n");download(new Blob([csv],{type:"text/csv;charset=utf-8"}),`${safeName(event.name)}-shops.csv`);showToast("ส่งออกข้อมูลร้านค้าแล้ว")}
 function exportSource(){const event=currentEvent(),draft=activeView==="layout";return{event,layout:draft?event.draftLayout:event.publishedLayout,columns:draft?event.draftColumns:event.publishedColumns,guides:draft?event.draftGuides:event.publishedGuides,scale:draft?event.draftObjectScale:event.publishedObjectScale,opacity:draft?event.draftBackgroundOpacity:event.publishedBackgroundOpacity};}
 function fitCanvasText(context,text,maxWidth,fontSize,weight=700){let size=fontSize;do{context.font=`${weight} ${size}px "IBM Plex Sans Thai",sans-serif`;if(context.measureText(text).width<=maxWidth||size<=8)break;size-=1;}while(size>8);context.fillText(text,0,0,maxWidth);}

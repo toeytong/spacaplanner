@@ -22,8 +22,8 @@
         <div class="top-actions">
           <span class="member-badge" title="บัญชีที่กำลังใช้งาน" hidden><span class="member-avatar">S</span><span id="memberName">ผู้เยี่ยมชม</span></span>
           <button class="button ghost compact" id="membersButton" type="button" hidden>จัดการสมาชิก</button>
-          <a class="button ghost compact auth-button" id="signInButton" href="/signin-with-chatgpt?return_to=%2F" target="_top" hidden>เข้าสู่ระบบ</a>
-          <a class="button ghost compact auth-button" id="signOutButton" href="/signout-with-chatgpt?return_to=%2F" target="_top" hidden>ออกจากระบบ</a>
+          <a class="button ghost compact auth-button" id="signInButton" href="/" target="_top" hidden>เข้าสู่ระบบ</a>
+          <a class="button ghost compact auth-button" id="signOutButton" href="/cdn-cgi/access/logout" target="_top" hidden>ออกจากระบบ</a>
           <span class="save-state" id="saveState"><i></i> กำลังเชื่อมต่อ Cloud</span>
           <button class="button ghost export-toggle" id="exportToggle" type="button">ส่งออก ▾</button>
           <div class="export-menu" id="exportMenu" hidden><button data-export="pdf" type="button">PDF / พิมพ์แปลน</button><button data-export="png" type="button">PNG รูปภาพแปลน</button><button data-export="csv" type="button">CSV ข้อมูลร้านค้า</button><button data-export="json" type="button">JSON สำรองข้อมูล</button><button data-export="import" type="button">นำเข้าไฟล์ JSON</button></div>
@@ -32,6 +32,7 @@
       </header>
 
       <main>
+        <div class="access-banner" id="syncConflict" role="alert" hidden><strong>มีข้อมูลจากอีกอุปกรณ์ หรือมีฉบับที่ยังบันทึกไม่สำเร็จ</strong><span>เลือกฉบับที่ต้องการใช้ ระบบจะไม่เขียนทับให้อัตโนมัติ</span><button class="button ghost compact" id="backupConflict" type="button">สำรองฉบับบนเครื่องเป็น JSON</button><button class="button ghost compact" id="loadCloudConflict" type="button">ใช้ฉบับบน Cloud</button><button class="button primary compact" id="keepLocalConflict" type="button">บันทึกฉบับนี้แทน Cloud</button></div>
         <div class="access-banner" id="accessBanner" hidden><strong>บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน</strong><span>กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มอีเมลของคุณ</span></div>
         <section class="summary" aria-label="สรุปสถานะพื้นที่">
           <div class="summary-intro"><span class="lock-badge" id="planBadge">● LOCKED PLAN</span><h2 id="eventTitle">แปลนกิจกรรม</h2><p id="eventMeta">ข้อมูลพื้นที่และร้านค้าบันทึกบน Cloud</p></div>
